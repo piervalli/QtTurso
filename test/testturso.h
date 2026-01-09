@@ -106,10 +106,13 @@ private slots:
     void testInsertIntoSelectRowId2();
     void testInsertIntoSelectWithRowid();
     void testInsertIntoSelectWithRowidExplicit();
+    void testInsertIntoSelectWithTypelessColumn();
     // Edge Cases (2 test)
     void testVeryLongString();
     void testManyColumns();
     void testManyColumnsManyRows();
+    void testMvcc();
+    void testLibraryVersion();
 
 signals:
 private:

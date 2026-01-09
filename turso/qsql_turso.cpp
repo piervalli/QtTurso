@@ -178,6 +178,7 @@ public:
     sqlite3 *access = nullptr;
     QVector<QTursoResult *> results;
     QStringList notificationid;
+    bool singleWriter=true;
 };
 
 
@@ -803,6 +804,8 @@ bool QTursoDriver::open(const QString & db, const QString &, const QString &, co
             openUriOption = true;
         } else if (option == QLatin1String("QSQLITE_ENABLE_SHARED_CACHE")) {
             sharedCache = true;
+        }else if (option == QLatin1String("TURSO_WRITER_CONCURRENCY")) {
+            d->singleWriter = false;
         }
 #if QT_CONFIG(regularexpression)
         else if (option.startsWith(regexpConnectOption)) {
@@ -867,6 +870,7 @@ bool QTursoDriver::open(const QString & db, const QString &, const QString &, co
 
         return false;
     }
+    return true;
 }
 
 void QTursoDriver::close()
@@ -899,11 +903,12 @@ QSqlResult *QTursoDriver::createResult() const
 
 bool QTursoDriver::beginTransaction()
 {
+    Q_D(QTursoDriver);
     if (!isOpen() || isOpenError())
         return false;
-    qDebug() << "beginTransaction";
+    qDebug() << "beginTransaction singleWriter"<<d->singleWriter;
     QSqlQuery q(createResult());
-    if (!q.exec(QLatin1String("BEGIN"))) {
+    if (!q.exec(QLatin1String(d->singleWriter?"BEGIN":"BEGIN CONCURRENT TRANSACTION; --experimental-mvcc"))) {
         setLastError(QSqlError(tr("Unable to begin transaction"),
                                q.lastError().databaseText(), QSqlError::TransactionError));
         return false;

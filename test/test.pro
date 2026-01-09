@@ -1,4 +1,4 @@
-QT       += core sql testlib
+QT       += core sql testlib concurrent
 
 QT       -= gui
 CONFIG  += c++14
@@ -10,7 +10,9 @@ CONFIG   -= app_bundle
 TEMPLATE = app
 
 SOURCES += main.cpp \
+    testmultistatement.cpp \
     testturso.cpp
 
 HEADERS += \
+    testmultistatement.h \
     testturso.h

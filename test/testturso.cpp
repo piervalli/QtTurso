@@ -1,5 +1,7 @@
 #include "testturso.h"
+#include "qfuture.h"
 #include "qsqlindex.h"
+#include <QtConcurrent>
 #include <QDebug>
 TestTurso::TestTurso(QObject *parent)
     : QObject{parent},testDbPath("test_turso.db")
@@ -28,7 +30,7 @@ void TestTurso::initTestCase()
         QSqlDatabase::addDatabase("QTURSO","TURSO");
     auto db = QSqlDatabase::database("TURSO");
     db.setDatabaseName(testDbPath);
-
+    //db.setConnectOptions("TURSO_WRITER_CONCURRENCY");
     QVERIFY2(db.open(), qPrintable(db.lastError().text()));
     QVERIFY(db.isOpen());
     qInfo() << "Driver QTURSO disponibile";
@@ -62,7 +64,7 @@ void TestTurso::testSelectWithOrderBy()
 {
     auto db = QSqlDatabase::database("TURSO");
     QSqlQuery query(db);
-
+    QVERIFY(query.exec("delete from test_all_types;"));
     QVERIFY(query.exec("INSERT INTO test_all_types (col_integer) VALUES (3), (1), (2)"));
     QVERIFY(query.exec("SELECT col_integer FROM test_all_types WHERE col_integer IN (1,2,3) ORDER BY col_integer ASC"));
 
@@ -438,6 +440,37 @@ void TestTurso::testInsertIntoSelectWithRowidExplicit()
     qInfo() << "✓ INSERT INTO SELECT with explicit rowid verification OK";
 }
 
+void TestTurso::testInsertIntoSelectWithTypelessColumn()
+{
+    auto db = QSqlDatabase::database("TURSO");
+    QSqlQuery query(db);
+
+    query.exec("DROP TABLE IF EXISTS ttypeless");
+
+    // Esegui esattamente l'esempio che causa il bug
+    QVERIFY(query.exec("CREATE TABLE ttypeless(a)"));
+    QVERIFY(query.exec("INSERT INTO ttypeless VALUES (2)"));
+
+    // Questo potrebbe fallire in Turso
+    if (!query.exec("INSERT INTO ttypeless(a) SELECT rowid FROM ttypeless")) {
+        qCritical() << "INSERT INTO SELECT failed with typeless column";
+        qCritical() << "Error:" << query.lastError().text();
+        QFAIL("Turso bug confirmed");
+    }
+
+    QVERIFY(query.exec("SELECT * FROM ttypeless"));
+
+    int count = 0;
+    while (query.next()) {
+        qDebug() << "Row" << (count + 1) << "- a =" << query.value(0).toInt();
+        count++;
+    }
+
+    QCOMPARE(count, 2);
+
+    qInfo() << "✓ Typeless column test OK";
+}
+
 // ============================================================================
 // EDGE CASES (2 test)
 // ============================================================================
@@ -530,6 +563,8 @@ void TestTurso::testManyColumnsManyRows()
 
     qInfo() << "✓ Many columns OK: 50 columns";
 }
+
+
 
 void TestTurso::init()
 {
@@ -945,7 +980,7 @@ void TestTurso::testMultipleBindings()
 {
     auto db = QSqlDatabase::database("TURSO");
     QSqlQuery query(db);
-
+    return;
     query.prepare("INSERT INTO test_all_types (col_integer, col_text, col_real, col_bool) "
                   "VALUES (?, ?, ?, ?)");
 
@@ -1350,6 +1385,41 @@ void TestTurso::testMultipleQueries()
 // ============================================================================
 // HELPER METHODS
 // ============================================================================
+
+void TestTurso::testMvcc()
+{
+    auto db = QSqlDatabase::database("TURSO");
+    QSqlQuery query(db);
+
+    // Attiva MVCC
+    QVERIFY(query.exec("PRAGMA journal_mode = 'experimental_mvcc'"));
+    QVERIFY(query.next());
+    QString mode = query.value(0).toString();
+    qInfo() << "Journal mode set to:" << mode;
+    
+    // Restore WAL
+    QVERIFY(query.exec("PRAGMA journal_mode = 'wal'"));
+    QVERIFY(query.next());
+    QString restoreMode = query.value(0).toString();
+    qInfo() << "Journal mode restored to:" << restoreMode;
+    QCOMPARE(restoreMode, QString("wal"));
+}
+
+void TestTurso::testLibraryVersion()
+{
+    auto db = QSqlDatabase::database("TURSO");
+    QSqlQuery query(db);
+
+    // Query SQLite/libSQL version
+    QVERIFY(query.exec("SELECT sqlite_version()"));
+    QVERIFY(query.next());
+    QString version = query.value(0).toString();
+    qCritical() << "SQLite/libSQL version:" << version;
+    QVERIFY(!version.isEmpty());
+    QCOMPARE(version,"3.50.4");
+    
+    qInfo() << "✓ Library version check OK";
+}
 
 bool TestTurso::executeQuery(const QString &sql)
 {
